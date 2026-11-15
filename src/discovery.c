@@ -65,11 +65,19 @@ void acuda_nvapi_copy_short_string(char *dst, const char *src) {
 }
 
 NvPhysicalGpuHandle acuda_nvapi_gpu_handle(const acuda_nvapi_gpu_t *g) {
-    return (NvPhysicalGpuHandle)(size_t)g->ppu_key;
+    /* PhysX 2.x/older NVAPI clients expect bit 0x100 set on the physical GPU
+     * handle to recognize the device as "PhysX online"/PPU-capable. */
+    return (NvPhysicalGpuHandle)(size_t)(g->ppu_key | 0x100u);
 }
 
 acuda_nvapi_gpu_t *acuda_nvapi_find_gpu_by_handle(NvPhysicalGpuHandle h) {
     NvU32 i;
+    NvU32 key = (NvU32)((size_t)h & ~0x100u);
+    for (i = 0; i < g_gpu_count; i++) {
+        if (g_gpus[i].valid && g_gpus[i].ppu_key == key)
+            return &g_gpus[i];
+    }
+    /* Fallback: accept exact match for callers passing an unnormalized handle. */
     for (i = 0; i < g_gpu_count; i++) {
         if (g_gpus[i].valid && acuda_nvapi_gpu_handle(&g_gpus[i]) == h)
             return &g_gpus[i];
