@@ -356,27 +356,51 @@ typedef struct {
     NvU32 curAvailableDedicatedVideoMemory;
 } NV_DISPLAY_DRIVER_MEMORY_INFO_BASE;
 
+/* NVAPI version dwords encode the caller's struct size in the low 16 bits
+ * (acuda_nvapi_make_version(size, ver) = size | ver << 16).  Clients pass
+ * noticeably smaller structs than the newest layout (PhysX 2.8 passes
+ * NV_GPU_THERMAL_SETTINGS_V1 = 0x44 bytes), so every write into a caller
+ * buffer must be clamped to the declared size instead of assuming the full
+ * current struct: overrunning it corrupts whatever follows the struct in
+ * the caller's frame (stack cookies included). */
+static NvU32 nvapi_struct_size(const void *p, NvU32 max_size) {
+    NvU32 ver = ((const NvU32 *)p)[0];
+    NvU32 size = ver & 0xFFFFu;
+    if (size < sizeof(NvU32)) size = sizeof(NvU32);
+    if (size > max_size) size = max_size;
+    return size;
+}
+
 static NvAPI_Status fill_memory_info(NvPhysicalGpuHandle h, void *p, NvU32 id) {
     acuda_nvapi_gpu_t *g;
     NV_DISPLAY_DRIVER_MEMORY_INFO_BASE *m;
-    NvU32 ded, avail, cur;
+    NvU32 size, ver, ded, avail, cur;
     (void)id;
     acuda_nvapi_ensure_discovered();
     if (!p) return NVAPI_INVALID_ARGUMENT;
     g = acuda_nvapi_find_gpu_by_handle(h);
     if (!g) return NVAPI_INVALID_ARGUMENT;
     m = (NV_DISPLAY_DRIVER_MEMORY_INFO_BASE *)p;
+    ver = m->version;
+    size = nvapi_struct_size(p, sizeof(*m));
+    memset(p, 0, size);
+    m->version = ver;
     /* Defaults from real NVAPI dump (RTX 3070 Laptop, ver=0x20018). */
     ded   = acuda_nvapi_env_u32("ACUDA_NVAPI_MEM_DEDICATED_KB", 8388608u);
     avail = acuda_nvapi_env_u32("ACUDA_NVAPI_MEM_AVAILABLE_KB", 8210432u);
     cur   = acuda_nvapi_env_u32("ACUDA_NVAPI_MEM_CUR_AVAILABLE_KB", 8206876u);
-    m->dedicatedVideoMemory = ded;
-    m->availableDedicatedVideoMemory = avail;
-    m->systemVideoMemory = acuda_nvapi_env_u32("ACUDA_NVAPI_MEM_SYSTEM_KB", 0u);
-    m->sharedSystemMemory = acuda_nvapi_env_u32("ACUDA_NVAPI_MEM_SHARED_KB", 8050716u);
-    m->curAvailableDedicatedVideoMemory = cur;
-    acuda_nvapi_log_msg("GetMemoryInfo id=0x%x h=%p ver=0x%x ded=%u avail=%u sys=%u shared=%u cur=%u",
-                        id, h, m->version, m->dedicatedVideoMemory, m->availableDedicatedVideoMemory,
+    if (size >= offsetof(NV_DISPLAY_DRIVER_MEMORY_INFO_BASE, dedicatedVideoMemory) + 4)
+        m->dedicatedVideoMemory = ded;
+    if (size >= offsetof(NV_DISPLAY_DRIVER_MEMORY_INFO_BASE, availableDedicatedVideoMemory) + 4)
+        m->availableDedicatedVideoMemory = avail;
+    if (size >= offsetof(NV_DISPLAY_DRIVER_MEMORY_INFO_BASE, systemVideoMemory) + 4)
+        m->systemVideoMemory = acuda_nvapi_env_u32("ACUDA_NVAPI_MEM_SYSTEM_KB", 0u);
+    if (size >= offsetof(NV_DISPLAY_DRIVER_MEMORY_INFO_BASE, sharedSystemMemory) + 4)
+        m->sharedSystemMemory = acuda_nvapi_env_u32("ACUDA_NVAPI_MEM_SHARED_KB", 8050716u);
+    if (size >= offsetof(NV_DISPLAY_DRIVER_MEMORY_INFO_BASE, curAvailableDedicatedVideoMemory) + 4)
+        m->curAvailableDedicatedVideoMemory = cur;
+    acuda_nvapi_log_msg("GetMemoryInfo id=0x%x h=%p ver=0x%x size=%u ded=%u avail=%u sys=%u shared=%u cur=%u",
+                        id, h, m->version, size, m->dedicatedVideoMemory, m->availableDedicatedVideoMemory,
                         m->systemVideoMemory, m->sharedSystemMemory, m->curAvailableDedicatedVideoMemory);
     return NVAPI_OK;
 }
@@ -403,9 +427,11 @@ static NvAPI_Status NvAPI_GPU_GetThermalSettings(NvPhysicalGpuHandle h, NvU32 id
     (void)h; (void)idx;
     if (p) {
         NvU32 ver = ((NvU32 *)p)[0];
-        memset(p, 0, 256);
+        NvU32 size = nvapi_struct_size(p, 256);
+        memset(p, 0, size);
         ((NvU32 *)p)[0] = ver; /* preserve caller version */
-        ((NvU32 *)p)[1] = 0;   /* count */
+        if (size >= 8)
+            ((NvU32 *)p)[1] = 0;   /* count */
     }
     return NVAPI_OK;
 }
@@ -418,7 +444,7 @@ static NvAPI_Status NvAPI_GPU_GetDynamicPstatesInfoEx(NvPhysicalGpuHandle h, voi
     (void)h;
     if (p) {
         NvU32 ver = ((NvU32 *)p)[0];
-        memset(p, 0, 256);
+        memset(p, 0, nvapi_struct_size(p, 256));
         ((NvU32 *)p)[0] = ver;
     }
     return NVAPI_OK;
@@ -427,7 +453,7 @@ static NvAPI_Status NvAPI_GPU_GetPstates20(NvPhysicalGpuHandle h, void *p) {
     (void)h;
     if (p) {
         NvU32 ver = ((NvU32 *)p)[0];
-        memset(p, 0, 256);
+        memset(p, 0, nvapi_struct_size(p, 256));
         ((NvU32 *)p)[0] = ver;
     }
     return NVAPI_OK;
@@ -436,7 +462,7 @@ static NvAPI_Status NvAPI_GPU_GetAllClockFrequencies(NvPhysicalGpuHandle h, void
     (void)h;
     if (p) {
         NvU32 ver = ((NvU32 *)p)[0];
-        memset(p, 0, 256);
+        memset(p, 0, nvapi_struct_size(p, 256));
         ((NvU32 *)p)[0] = ver;
     }
     return NVAPI_OK;
