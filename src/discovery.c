@@ -65,21 +65,22 @@ void acuda_nvapi_copy_short_string(char *dst, const char *src) {
 }
 
 NvPhysicalGpuHandle acuda_nvapi_gpu_handle(const acuda_nvapi_gpu_t *g) {
-    /* PhysX 2.x/older NVAPI clients expect bit 0x100 set on the physical GPU
-     * handle to recognize the device as "PhysX online"/PPU-capable. */
-    return (NvPhysicalGpuHandle)(size_t)(g->ppu_key | 0x100u);
+    /* Real NVAPI physical GPU handle/GPUID/CUDA attr 0x20080402 are the same
+     * value (e.g. 0x100). Keep them unified for PhysX device matching. */
+    return (NvPhysicalGpuHandle)(size_t)g->ppu_key;
 }
 
 acuda_nvapi_gpu_t *acuda_nvapi_find_gpu_by_handle(NvPhysicalGpuHandle h) {
     NvU32 i;
-    NvU32 key = (NvU32)((size_t)h & ~0x100u);
+    NvU32 key = (NvU32)(size_t)h;
     for (i = 0; i < g_gpu_count; i++) {
-        if (g_gpus[i].valid && g_gpus[i].ppu_key == key)
+        if (g_gpus[i].valid && (g_gpus[i].ppu_key == key || g_gpus[i].gpu_id == key))
             return &g_gpus[i];
     }
-    /* Fallback: accept exact match for callers passing an unnormalized handle. */
+    /* Accept legacy normalized/unmasked forms. */
+    key &= ~0x100u;
     for (i = 0; i < g_gpu_count; i++) {
-        if (g_gpus[i].valid && acuda_nvapi_gpu_handle(&g_gpus[i]) == h)
+        if (g_gpus[i].valid && (g_gpus[i].ppu_key == key || g_gpus[i].gpu_id == key))
             return &g_gpus[i];
     }
     return NULL;
@@ -88,7 +89,7 @@ acuda_nvapi_gpu_t *acuda_nvapi_find_gpu_by_handle(NvPhysicalGpuHandle h) {
 acuda_nvapi_gpu_t *acuda_nvapi_find_gpu_by_id(NvU32 id) {
     NvU32 i;
     for (i = 0; i < g_gpu_count; i++) {
-        if (g_gpus[i].valid && g_gpus[i].gpu_id == id)
+        if (g_gpus[i].valid && (g_gpus[i].gpu_id == id || g_gpus[i].ppu_key == id))
             return &g_gpus[i];
     }
     return NULL;
@@ -242,7 +243,7 @@ static void discover_from_acuda(void) {
         CUdevice dev = (CUdevice)i;
         memset(g, 0, sizeof(*g));
         g->valid = 1;
-        g->gpu_id = acuda_nvapi_env_u32("ACUDA_NVAPI_GPU_ID", (NvU32)(i + 1));
+        g->gpu_id = acuda_nvapi_env_u32("ACUDA_NVAPI_GPU_ID", 0);
         cuDeviceGetName(g->name, sizeof(g->name), dev);
         if (cuDeviceGetPCIBusId(bdf, sizeof(bdf), dev) == CUDA_SUCCESS)
             parse_bdf(bdf, &g->pci_domain, &g->pci_bus, &g->pci_device,
@@ -264,11 +265,12 @@ static void discover_from_acuda(void) {
         discover_pci_ids(g);
 #endif
         if (!g->ppu_key) {
-            g->ppu_key = (NvU32)(0x4C000000u | (g->pci_domain << 16) |
-                                 (g->pci_bus << 8) | g->pci_device);
-            if (!g->ppu_key || g->ppu_key == 0x4C000000u)
-                g->ppu_key = (NvU32)(0x4C000000u | (NvU32)(i + 1));
+            /* Default to real-NVAPI-like PPU handle/id when CUDA doesn't report
+             * attr 0x20080402; ensure bit 0x100 is present for legacy PhysX. */
+            g->ppu_key = 0x100u | (NvU32)i;
         }
+        if (!g->gpu_id)
+            g->gpu_id = g->ppu_key;
         if (!g->name[0]) acuda_nvapi_copy_short_string(g->name, "ACuda Graphics Device");
         acuda_nvapi_log_msg("nvapi: gpu[%d] name=%s bdf=%04x:%02x:%02x.%x ppu=0x%x mem_kb=%u pci=%04x:%04x:%08x:%02x",
                             i, g->name, g->pci_domain, g->pci_bus, g->pci_device,
@@ -288,8 +290,10 @@ void acuda_nvapi_ensure_discovered(void) {
         if (!alloc_gpus(1)) return;
         g = &g_gpus[0];
         g->valid = 1;
-        g->gpu_id = acuda_nvapi_env_u32("ACUDA_NVAPI_GPU_ID", 1);
-        g->ppu_key = acuda_nvapi_env_u32("ACUDA_NVAPI_GPU_HANDLE", 1);
+        g->ppu_key = acuda_nvapi_env_u32("ACUDA_NVAPI_GPU_HANDLE", 0x100u);
+        if (!g->ppu_key) g->ppu_key = 0x100u;
+        g->gpu_id = acuda_nvapi_env_u32("ACUDA_NVAPI_GPU_ID", g->ppu_key);
+        if (!g->gpu_id) g->gpu_id = g->ppu_key;
         g->pci_domain = 0;
         g->pci_bus = acuda_nvapi_env_u32("ACUDA_NVAPI_PCI_BUS", 0);
         g->pci_device = acuda_nvapi_env_u32("ACUDA_NVAPI_PCI_SLOT", 0);
