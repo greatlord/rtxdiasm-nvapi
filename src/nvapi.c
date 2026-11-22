@@ -107,9 +107,11 @@ static NvAPI_Status NvAPI_GetPhysicalGPUFromGPUID(NvU32 gpu_id, NvPhysicalGpuHan
     LOG_CALLER("5380ad1a");
     if (!physical_gpu) return NVAPI_INVALID_ARGUMENT;
     g = acuda_nvapi_find_gpu_by_id(gpu_id);
+    if (!g && g_gpu_count == 1)
+        g = &g_gpus[0]; /* tolerate OpenCL/driver-internal GPU ID schemes */
     if (!g) { acuda_nvapi_log_msg("call 5380ad1a -> not found"); return NVAPI_INVALID_ARGUMENT; }
     *physical_gpu = acuda_nvapi_gpu_handle(g);
-    acuda_nvapi_log_msg("call 5380ad1a -> handle=%p", *physical_gpu);
+    acuda_nvapi_log_msg("call 5380ad1a -> handle=%p", (void *)*physical_gpu);
     return NVAPI_OK;
 }
 
@@ -628,14 +630,18 @@ ACUDA_NVAPI_EXPORT void *ACUDA_NVAPI_CALL nvapi_QueryInterface(NvU32 interface_i
         case 0x3092ac32u: result = (void *)NvAPI_Stub_Success_2; break;
         case 0x33c7358cu: result = (void *)NvAPI_Stub_Success; break;
         case 0x593e8644u: result = (void *)NvAPI_Stub_Success; break;
+        case 0xad298d3fu: result = (void *)NvAPI_Stub_Success_4; break; /* private init, seen in nvoglv64 */
         /* PhysXCore (2.8.4) lookups observed in decompiled binary */
         case 0x84244524u: result = (void *)NvAPI_ID_84244524; break;
         case 0xcb7b09d2u: result = (void *)NvAPI_ID_CB7B09D2; break;
         /* Private/unknown IDs observed from nvoglv64; returning NVAPI_OK with
          * unwritten outputs can hang the GL driver. Return legacy -8 shim
          * status (see NvAPI_Stub_NoImpl_4). */
-        case 0xf0f4a5e0u: result = (void *)NvAPI_Stub_NoImpl_4; break;
+        case 0xf0f4a5e0u: result = (void *)NvAPI_Stub_NoImpl_4; break; /* D3D_CudaInteropGetObjectHandle - private */
         case 0x1efc3957u: result = (void *)NvAPI_Stub_NoImpl_4; break;
+        /* D3D/GL interop - not fully implementable in shim; explicit noimpl avoids silent success. */
+        case 0xc83c4d5du: result = (void *)NvAPI_Stub_NoImpl_4; break; /* NvAPI_D3D11_RegisterDeviceFromOGL */
+        case 0x64d6c83du: result = (void *)NvAPI_Stub_NoImpl_4; break; /* NvAPI_D3D_CudaInteropFunction */
         default:
             acuda_nvapi_log_msg("qi-default id=0x%08x", interface_id);
             result = (void *)NvAPI_Stub_Success_4;
