@@ -549,7 +549,10 @@ static NvAPI_Status NvAPI_Stub_NoImpl_4(void *a, void *b, void *c, void *d) {
 #endif
     acuda_nvapi_log_caller("stub-noimpl", ra);
     acuda_nvapi_log_msg("stub-noimpl id=0x%08x a=%p b=%p c=%p d=%p", g_stub_last_id, a, b, c, d);
-    return NVAPI_NO_IMPLEMENTATION;
+    /* Official NVAPI_NO_IMPLEMENTATION is -3, but nvoglv64 hangs on -3 for
+     * some private IDs; old shim value -8 (NVAPI_INVALID_HANDLE in official
+     * headers) preserves the previous working behavior. */
+    return (NvAPI_Status)(-8);
 }
 
 static NvAPI_Status NvAPI_ID_84244524(void *a, void *b, void *c, void *d) {
@@ -629,7 +632,8 @@ ACUDA_NVAPI_EXPORT void *ACUDA_NVAPI_CALL nvapi_QueryInterface(NvU32 interface_i
         case 0x84244524u: result = (void *)NvAPI_ID_84244524; break;
         case 0xcb7b09d2u: result = (void *)NvAPI_ID_CB7B09D2; break;
         /* Private/unknown IDs observed from nvoglv64; returning NVAPI_OK with
-         * unwritten outputs can hang the GL driver. Prefer NO_IMPLEMENTATION. */
+         * unwritten outputs can hang the GL driver. Return legacy -8 shim
+         * status (see NvAPI_Stub_NoImpl_4). */
         case 0xf0f4a5e0u: result = (void *)NvAPI_Stub_NoImpl_4; break;
         case 0x1efc3957u: result = (void *)NvAPI_Stub_NoImpl_4; break;
         default:
