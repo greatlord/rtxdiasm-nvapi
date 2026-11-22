@@ -234,6 +234,25 @@ static NvAPI_Status NvAPI_GetPhysicalGPUFromUnAttachedDisplay(void *hNvUnAttache
     return NVAPI_OK;
 }
 
+static NvAPI_Status NvAPI_EnumNvidiaUnAttachedDisplayHandle(NvU32 thisEnum, void **pNvUnAttachedDispHandle) {
+    acuda_nvapi_log_msg("call 20de9260 idx=%u", thisEnum);
+    LOG_CALLER("20de9260");
+    if (!pNvUnAttachedDispHandle) return NVAPI_INVALID_ARGUMENT;
+    if (thisEnum != 0 || g_gpu_count == 0) return NVAPI_END_ENUMERATION;
+    acuda_nvapi_ensure_discovered();
+    *pNvUnAttachedDispHandle = (void *)(uintptr_t)(0xA0000001u + thisEnum);
+    return NVAPI_OK;
+}
+
+static NvAPI_Status NvAPI_GetUnAttachedAssociatedDisplayName(void *hNvUnAttachedDisp, NvAPI_ShortString szDisplayName) {
+    (void)hNvUnAttachedDisp;
+    acuda_nvapi_log_msg("call 4888d790 unattached=%p", hNvUnAttachedDisp);
+    LOG_CALLER("4888d790");
+    if (!szDisplayName) return NVAPI_INVALID_ARGUMENT;
+    acuda_nvapi_copy_short_string(szDisplayName, "\\\\.\\DISPLAY1");
+    return NVAPI_OK;
+}
+
 static NvAPI_Status NvAPI_GPU_GetConnectedOutputs(NvPhysicalGpuHandle physical_gpu, NvU32 *outputs) {
     acuda_nvapi_ensure_discovered();
     if (!outputs || !acuda_nvapi_find_gpu_by_handle(physical_gpu)) return NVAPI_INVALID_ARGUMENT;
@@ -572,6 +591,8 @@ ACUDA_NVAPI_EXPORT void *ACUDA_NVAPI_CALL nvapi_QueryInterface(NvU32 interface_i
         case 0x35c29134u: result = (void *)NvAPI_GetAssociatedNvidiaDisplayHandle; break;
         case 0x22a78b05u: result = (void *)NvAPI_GetAssociatedNvidiaDisplayName; break;
         case 0x5018ed61u: result = (void *)NvAPI_GetPhysicalGPUFromUnAttachedDisplay; break;
+        case 0x20de9260u: result = (void *)NvAPI_EnumNvidiaUnAttachedDisplayHandle; break;
+        case 0x4888d790u: result = (void *)NvAPI_GetUnAttachedAssociatedDisplayName; break;
         case 0xceee8e9fu: result = (void *)NvAPI_GPU_GetFullName; break;
         case 0x2ddfb66eu: result = (void *)NvAPI_GPU_GetPCIIdentifiers; break;
         case 0xc33baeb1u: result = (void *)NvAPI_GPU_GetGPUType; break;
