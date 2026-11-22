@@ -544,6 +544,16 @@ static NvAPI_Status NvAPI_Stub_Success_4(void *a, void *b, void *c, void *d) {
     return NVAPI_OK;
 }
 
+static NvAPI_Status NvAPI_Stub_NoImpl_4(void *a, void *b, void *c, void *d) {
+    void *ra = NULL;
+#if defined(_WIN32)
+    ra = _ReturnAddress();
+#endif
+    acuda_nvapi_log_caller("stub-noimpl", ra);
+    acuda_nvapi_log_msg("stub-noimpl id=0x%08x a=%p b=%p c=%p d=%p", g_stub_last_id, a, b, c, d);
+    return NVAPI_NO_IMPLEMENTATION;
+}
+
 static NvAPI_Status NvAPI_ID_84244524(void *a, void *b, void *c, void *d) {
     void *ra = NULL;
 #if defined(_WIN32)
@@ -620,6 +630,10 @@ ACUDA_NVAPI_EXPORT void *ACUDA_NVAPI_CALL nvapi_QueryInterface(NvU32 interface_i
         /* PhysXCore (2.8.4) lookups observed in decompiled binary */
         case 0x84244524u: result = (void *)NvAPI_ID_84244524; break;
         case 0xcb7b09d2u: result = (void *)NvAPI_ID_CB7B09D2; break;
+        /* Private/unknown IDs observed from nvoglv64; returning NVAPI_OK with
+         * unwritten outputs can hang the GL driver. Prefer NO_IMPLEMENTATION. */
+        case 0xf0f4a5e0u: result = (void *)NvAPI_Stub_NoImpl_4; break;
+        case 0x1efc3957u: result = (void *)NvAPI_Stub_NoImpl_4; break;
         default:
             acuda_nvapi_log_msg("qi-default id=0x%08x", interface_id);
             result = (void *)NvAPI_Stub_Success_4;
