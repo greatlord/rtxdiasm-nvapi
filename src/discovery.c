@@ -7,10 +7,17 @@ NV_COMPUTE_GPU *g_compute_gpus;
 static int g_discovered;
 
 void acuda_nvapi_log_msg(const char *fmt, ...) {
-    const char *path = getenv("ACUDA_NVAPI_LOG");
+    static char path[MAX_PATH];
+    static int init;
+    static int enabled;
     va_list ap;
     FILE *f;
-    if (!path || !*path) return;
+    if (!init) {
+        DWORD n = GetEnvironmentVariableA("ACUDA_NVAPI_LOG", path, sizeof(path));
+        enabled = (n > 0 && n < sizeof(path) && path[0]);
+        init = 1;
+    }
+    if (!enabled) return;
     f = fopen(path, "a");
     if (!f) return;
     va_start(ap, fmt);
@@ -43,18 +50,21 @@ NvU32 acuda_nvapi_make_version(size_t size, NvU32 ver) {
 }
 
 NvU32 acuda_nvapi_env_u32(const char *name, NvU32 fallback) {
-    const char *s = getenv(name);
+    char buf[64];
     char *end = NULL;
+    DWORD n = GetEnvironmentVariableA(name, buf, sizeof(buf));
     unsigned long v;
-    if (!s || !*s) return fallback;
-    v = strtoul(s, &end, 0);
-    if (end == s) return fallback;
+    if (n == 0 || n >= sizeof(buf) || !buf[0]) return fallback;
+    v = strtoul(buf, &end, 0);
+    if (end == buf) return fallback;
     return (NvU32)v;
 }
 
 const char *acuda_nvapi_env_str(const char *name, const char *fallback) {
-    const char *s = getenv(name);
-    return (s && *s) ? s : fallback;
+    char buf[MAX_PATH];
+    DWORD n = GetEnvironmentVariableA(name, buf, sizeof(buf));
+    if (n == 0 || n >= sizeof(buf) || !buf[0]) return fallback;
+    return _strdup(buf);
 }
 
 void acuda_nvapi_copy_short_string(char *dst, const char *src) {
