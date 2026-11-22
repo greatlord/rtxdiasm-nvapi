@@ -639,9 +639,9 @@ ACUDA_NVAPI_EXPORT void *ACUDA_NVAPI_CALL nvapi_QueryInterface(NvU32 interface_i
          * status (see NvAPI_Stub_NoImpl_4). */
         case 0xf0f4a5e0u: result = (void *)NvAPI_Stub_NoImpl_4; break; /* D3D_CudaInteropGetObjectHandle - private */
         case 0x1efc3957u: result = (void *)NvAPI_Stub_NoImpl_4; break;
-        /* D3D/GL interop - not fully implementable in shim; explicit noimpl avoids silent success. */
-        case 0xc83c4d5du: result = (void *)NvAPI_Stub_NoImpl_4; break; /* NvAPI_D3D11_RegisterDeviceFromOGL */
-        case 0x64d6c83du: result = (void *)NvAPI_Stub_NoImpl_4; break; /* NvAPI_D3D_CudaInteropFunction */
+        /* D3D/GL interop - not fully implementable in shim; success keeps nvoglv64 stable. */
+        case 0xc83c4d5du: result = (void *)NvAPI_Stub_Success_4; break; /* NvAPI_D3D11_RegisterDeviceFromOGL */
+        case 0x64d6c83du: result = (void *)NvAPI_Stub_Success_4; break; /* NvAPI_D3D_CudaInteropFunction */
         default:
             acuda_nvapi_log_msg("qi-default id=0x%08x", interface_id);
             result = (void *)NvAPI_Stub_Success_4;
