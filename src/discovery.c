@@ -6,18 +6,29 @@ NvU32 g_gpu_count;
 NV_COMPUTE_GPU *g_compute_gpus;
 static int g_discovered;
 
-void acuda_nvapi_log_msg(const char *fmt, ...) {
-    static char path[MAX_PATH];
+static int acuda_nvapi_log_path(char *path, size_t path_size) {
+    static char cached[MAX_PATH];
     static int init;
     static int enabled;
-    va_list ap;
-    FILE *f;
     if (!init) {
-        DWORD n = GetEnvironmentVariableA("ACUDA_NVAPI_LOG", path, sizeof(path));
-        enabled = (n > 0 && n < sizeof(path) && path[0]);
+        DWORD n = GetEnvironmentVariableA("ACUDA_NVAPI_LOG", cached, sizeof(cached));
+        enabled = (n > 0 && n < sizeof(cached) && cached[0]);
         init = 1;
     }
-    if (!enabled) return;
+    if (!enabled)
+        return 0;
+    if (path && path_size) {
+        strncpy(path, cached, path_size - 1);
+        path[path_size - 1] = '\0';
+    }
+    return 1;
+}
+
+void acuda_nvapi_log_msg(const char *fmt, ...) {
+    char path[MAX_PATH];
+    va_list ap;
+    FILE *f;
+    if (!acuda_nvapi_log_path(path, sizeof(path))) return;
     f = fopen(path, "a");
     if (!f) return;
     va_start(ap, fmt);
@@ -31,6 +42,8 @@ void acuda_nvapi_log_caller(const char *tag, void *ra) {
 #if defined(_WIN32)
     HMODULE module = NULL;
     char path[MAX_PATH] = "";
+    char log_path[MAX_PATH];
+    if (!acuda_nvapi_log_path(log_path, sizeof(log_path))) return;
     if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
                                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                            (LPCSTR)ra, &module) && module) {
