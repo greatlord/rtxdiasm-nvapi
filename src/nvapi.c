@@ -77,15 +77,15 @@ static NvAPI_Status NvAPI_GPU_CudaEnumComputeCapableGpus_v2(NV_COMPUTE_GPU_TOPOL
     return NVAPI_OK;
 }
 
-static NvAPI_Status NvAPI_GPU_CudaEnumComputeCapableGpus(NvU32 *version_ptr) {
-    acuda_nvapi_log_msg("call 5786cc6e ptr=%p version=0x%x", (void *)version_ptr,
-                        version_ptr ? *version_ptr : 0);
+static NvAPI_Status NvAPI_GPU_CudaEnumComputeCapableGpus(NV_COMPUTE_GPU_TOPOLOGY *pComputeTopo) {
+    acuda_nvapi_log_msg("call 5786cc6e ptr=%p version=0x%x", (void *)pComputeTopo,
+                        pComputeTopo ? pComputeTopo->version : 0);
     LOG_CALLER("5786cc6e");
-    if (!version_ptr) return NVAPI_INVALID_ARGUMENT;
-    if (*version_ptr == acuda_nvapi_make_version(sizeof(NV_COMPUTE_GPU_TOPOLOGY_V1), 1))
-        return NvAPI_GPU_CudaEnumComputeCapableGpus_v1((NV_COMPUTE_GPU_TOPOLOGY_V1 *)version_ptr);
-    if (*version_ptr == acuda_nvapi_make_version(sizeof(NV_COMPUTE_GPU_TOPOLOGY_V2), 2))
-        return NvAPI_GPU_CudaEnumComputeCapableGpus_v2((NV_COMPUTE_GPU_TOPOLOGY_V2 *)version_ptr);
+    if (!pComputeTopo) return NVAPI_INVALID_ARGUMENT;
+    if (pComputeTopo->version == NV_COMPUTE_GPU_TOPOLOGY_VER1)
+        return NvAPI_GPU_CudaEnumComputeCapableGpus_v1((NV_COMPUTE_GPU_TOPOLOGY_V1 *)pComputeTopo);
+    if (pComputeTopo->version == NV_COMPUTE_GPU_TOPOLOGY_VER)
+        return NvAPI_GPU_CudaEnumComputeCapableGpus_v2((NV_COMPUTE_GPU_TOPOLOGY_V2 *)pComputeTopo);
     return NVAPI_INCOMPATIBLE_STRUCT_VERSION;
 }
 
@@ -221,32 +221,32 @@ static NvAPI_Status NvAPI_GetAssociatedNvidiaDisplayName(NvDisplayHandle NvDispH
     return NVAPI_OK;
 }
 
-static NvAPI_Status NvAPI_GetPhysicalGPUFromUnAttachedDisplay(void *hNvUnAttachedDisp,
+static NvAPI_Status NvAPI_GetPhysicalGPUFromUnAttachedDisplay(NvUnAttachedDisplayHandle hNvUnAttachedDisp,
                                                               NvPhysicalGpuHandle *pPhysicalGpu) {
     (void)hNvUnAttachedDisp;
     acuda_nvapi_ensure_discovered();
-    acuda_nvapi_log_msg("call 5018ed61 unattached=%p", hNvUnAttachedDisp);
+    acuda_nvapi_log_msg("call 5018ed61 unattached=%p", (void *)hNvUnAttachedDisp);
     LOG_CALLER("5018ed61");
     if (!pPhysicalGpu) return NVAPI_INVALID_ARGUMENT;
     if (g_gpu_count == 0) return NVAPI_NVIDIA_DEVICE_NOT_FOUND;
     *pPhysicalGpu = acuda_nvapi_gpu_handle(&g_gpus[0]);
-    acuda_nvapi_log_msg("call 5018ed61 -> handle=%p", *pPhysicalGpu);
+    acuda_nvapi_log_msg("call 5018ed61 -> handle=%p", (void *)*pPhysicalGpu);
     return NVAPI_OK;
 }
 
-static NvAPI_Status NvAPI_EnumNvidiaUnAttachedDisplayHandle(NvU32 thisEnum, void **pNvUnAttachedDispHandle) {
+static NvAPI_Status NvAPI_EnumNvidiaUnAttachedDisplayHandle(NvU32 thisEnum, NvUnAttachedDisplayHandle *pNvUnAttachedDispHandle) {
     acuda_nvapi_log_msg("call 20de9260 idx=%u", thisEnum);
     LOG_CALLER("20de9260");
     if (!pNvUnAttachedDispHandle) return NVAPI_INVALID_ARGUMENT;
     if (thisEnum != 0 || g_gpu_count == 0) return NVAPI_END_ENUMERATION;
     acuda_nvapi_ensure_discovered();
-    *pNvUnAttachedDispHandle = (void *)(uintptr_t)(0xA0000001u + thisEnum);
+    *pNvUnAttachedDispHandle = (NvUnAttachedDisplayHandle)(uintptr_t)(0xA0000001u + thisEnum);
     return NVAPI_OK;
 }
 
-static NvAPI_Status NvAPI_GetUnAttachedAssociatedDisplayName(void *hNvUnAttachedDisp, NvAPI_ShortString szDisplayName) {
+static NvAPI_Status NvAPI_GetUnAttachedAssociatedDisplayName(NvUnAttachedDisplayHandle hNvUnAttachedDisp, NvAPI_ShortString szDisplayName) {
     (void)hNvUnAttachedDisp;
-    acuda_nvapi_log_msg("call 4888d790 unattached=%p", hNvUnAttachedDisp);
+    acuda_nvapi_log_msg("call 4888d790 unattached=%p", (void *)hNvUnAttachedDisp);
     LOG_CALLER("4888d790");
     if (!szDisplayName) return NVAPI_INVALID_ARGUMENT;
     acuda_nvapi_copy_short_string(szDisplayName, "\\\\.\\DISPLAY1");
@@ -303,16 +303,16 @@ static NvAPI_Status NvAPI_GPU_GetPCIIdentifiers(NvPhysicalGpuHandle physical_gpu
     return NVAPI_OK;
 }
 
-static NvAPI_Status NvAPI_GPU_GetGPUType(NvPhysicalGpuHandle physical_gpu, NvU32 *gpu_type) {
+static NvAPI_Status NvAPI_GPU_GetGPUType(NvPhysicalGpuHandle hPhysicalGpu, NV_GPU_TYPE *pGpuType) {
     acuda_nvapi_ensure_discovered();
-    if (!gpu_type || !acuda_nvapi_find_gpu_by_handle(physical_gpu)) return NVAPI_INVALID_ARGUMENT;
-    *gpu_type = 2;
+    if (!pGpuType || !acuda_nvapi_find_gpu_by_handle(hPhysicalGpu)) return NVAPI_INVALID_ARGUMENT;
+    *pGpuType = NV_SYSTEM_TYPE_DGPU;
     return NVAPI_OK;
 }
-static NvAPI_Status NvAPI_GPU_GetBusType(NvPhysicalGpuHandle physical_gpu, NvU32 *bus_type) {
+static NvAPI_Status NvAPI_GPU_GetBusType(NvPhysicalGpuHandle hPhysicalGpu, NV_GPU_BUS_TYPE *pBusType) {
     acuda_nvapi_ensure_discovered();
-    if (!bus_type || !acuda_nvapi_find_gpu_by_handle(physical_gpu)) return NVAPI_INVALID_ARGUMENT;
-    *bus_type = 3;
+    if (!pBusType || !acuda_nvapi_find_gpu_by_handle(hPhysicalGpu)) return NVAPI_INVALID_ARGUMENT;
+    *pBusType = NVAPI_GPU_BUS_TYPE_PCI_EXPRESS;
     return NVAPI_OK;
 }
 static NvAPI_Status NvAPI_GPU_GetBusId(NvPhysicalGpuHandle physical_gpu, NvU32 *bus_id) {
@@ -352,11 +352,11 @@ static NvAPI_Status NvAPI_GPU_GetVirtualFrameBufferSize(NvPhysicalGpuHandle phys
     return NVAPI_OK;
 }
 
-static NvAPI_Status NvAPI_SYS_GetDriverAndBranchVersion(NvU32 *driver_version,
-                                                        NvAPI_ShortString *build_branch_string) {
-    if (!driver_version || !build_branch_string) return NVAPI_INVALID_ARGUMENT;
-    *driver_version = 99999;
-    acuda_nvapi_copy_short_string(*build_branch_string, "r999_99");
+static NvAPI_Status NvAPI_SYS_GetDriverAndBranchVersion(NvU32 *pDriverVersion,
+                                                        NvAPI_ShortString szBuildBranchString) {
+    if (!pDriverVersion || !szBuildBranchString) return NVAPI_INVALID_ARGUMENT;
+    *pDriverVersion = 99999;
+    acuda_nvapi_copy_short_string(szBuildBranchString, "r999_99");
     return NVAPI_OK;
 }
 
@@ -437,11 +437,11 @@ static NvAPI_Status fill_memory_info(NvPhysicalGpuHandle h, void *p, NvU32 id) {
     return NVAPI_OK;
 }
 
-static NvAPI_Status NvAPI_GPU_GetMemoryInfo(NvPhysicalGpuHandle h, void *p) {
-    return fill_memory_info(h, p, 0x07f9b368u);
+static NvAPI_Status NvAPI_GPU_GetMemoryInfo(NvPhysicalGpuHandle hPhysicalGpu, NV_DISPLAY_DRIVER_MEMORY_INFO *pMemoryInfo) {
+    return fill_memory_info(hPhysicalGpu, pMemoryInfo, 0x07f9b368u);
 }
-static NvAPI_Status NvAPI_GPU_GetMemoryInfoEx(NvPhysicalGpuHandle h, void *p) {
-    return fill_memory_info(h, p, 0x774aa982u);
+static NvAPI_Status NvAPI_GPU_GetMemoryInfoEx(NvPhysicalGpuHandle hPhysicalGpu, NV_GPU_MEMORY_INFO_EX *pMemoryInfo) {
+    return fill_memory_info(hPhysicalGpu, pMemoryInfo, 0x774aa982u);
 }
 static NvAPI_Status NvAPI_GPU_GetCurrentPCIEDownstreamWidth(NvPhysicalGpuHandle h, NvU32 *w) {
     (void)h;
@@ -455,47 +455,45 @@ static NvAPI_Status NvAPI_GPU_GetTachReading(NvPhysicalGpuHandle h, NvU32 *v) {
     *v = 0;
     return NVAPI_OK;
 }
-static NvAPI_Status NvAPI_GPU_GetThermalSettings(NvPhysicalGpuHandle h, NvU32 idx, void *p) {
-    (void)h; (void)idx;
-    if (p) {
-        NvU32 ver = ((NvU32 *)p)[0];
-        NvU32 size = nvapi_struct_size(p, 256);
-        memset(p, 0, size);
-        ((NvU32 *)p)[0] = ver; /* preserve caller version */
-        if (size >= 8)
-            ((NvU32 *)p)[1] = 0;   /* count */
+static NvAPI_Status NvAPI_GPU_GetThermalSettings(NvPhysicalGpuHandle hPhysicalGpu, NvU32 sensorIndex, NV_GPU_THERMAL_SETTINGS *pThermalSettings) {
+    (void)hPhysicalGpu; (void)sensorIndex;
+    if (pThermalSettings) {
+        NvU32 ver = pThermalSettings->version;
+        memset(pThermalSettings, 0, nvapi_struct_size(pThermalSettings, sizeof(*pThermalSettings)));
+        pThermalSettings->version = ver;
+        pThermalSettings->count = 0;
     }
     return NVAPI_OK;
 }
-static NvAPI_Status NvAPI_GPU_GetCurrentPstate(NvPhysicalGpuHandle h, NvU32 *p) {
-    (void)h;
-    if (p) *p = 0; /* NV_GPU_PERF_PSTATE_P0 */
+static NvAPI_Status NvAPI_GPU_GetCurrentPstate(NvPhysicalGpuHandle hPhysicalGpu, NV_GPU_PERF_PSTATE_ID *pCurrentPstate) {
+    (void)hPhysicalGpu;
+    if (pCurrentPstate) *pCurrentPstate = NVAPI_GPU_PERF_PSTATE_P0;
     return NVAPI_OK;
 }
-static NvAPI_Status NvAPI_GPU_GetDynamicPstatesInfoEx(NvPhysicalGpuHandle h, void *p) {
-    (void)h;
-    if (p) {
-        NvU32 ver = ((NvU32 *)p)[0];
-        memset(p, 0, nvapi_struct_size(p, 256));
-        ((NvU32 *)p)[0] = ver;
+static NvAPI_Status NvAPI_GPU_GetDynamicPstatesInfoEx(NvPhysicalGpuHandle hPhysicalGpu, NV_GPU_DYNAMIC_PSTATES_INFO_EX *pDynamicPstatesInfoEx) {
+    (void)hPhysicalGpu;
+    if (pDynamicPstatesInfoEx) {
+        NvU32 ver = pDynamicPstatesInfoEx->version;
+        memset(pDynamicPstatesInfoEx, 0, nvapi_struct_size(pDynamicPstatesInfoEx, sizeof(*pDynamicPstatesInfoEx)));
+        pDynamicPstatesInfoEx->version = ver;
     }
     return NVAPI_OK;
 }
-static NvAPI_Status NvAPI_GPU_GetPstates20(NvPhysicalGpuHandle h, void *p) {
-    (void)h;
-    if (p) {
-        NvU32 ver = ((NvU32 *)p)[0];
-        memset(p, 0, nvapi_struct_size(p, 256));
-        ((NvU32 *)p)[0] = ver;
+static NvAPI_Status NvAPI_GPU_GetPstates20(NvPhysicalGpuHandle hPhysicalGpu, NV_GPU_PERF_PSTATES20_INFO *pPstatesInfo) {
+    (void)hPhysicalGpu;
+    if (pPstatesInfo) {
+        NvU32 ver = pPstatesInfo->version;
+        memset(pPstatesInfo, 0, nvapi_struct_size(pPstatesInfo, sizeof(*pPstatesInfo)));
+        pPstatesInfo->version = ver;
     }
     return NVAPI_OK;
 }
-static NvAPI_Status NvAPI_GPU_GetAllClockFrequencies(NvPhysicalGpuHandle h, void *p) {
-    (void)h;
-    if (p) {
-        NvU32 ver = ((NvU32 *)p)[0];
-        memset(p, 0, nvapi_struct_size(p, 256));
-        ((NvU32 *)p)[0] = ver;
+static NvAPI_Status NvAPI_GPU_GetAllClockFrequencies(NvPhysicalGpuHandle hPhysicalGpu, NV_GPU_CLOCK_FREQUENCIES *pClkFreqs) {
+    (void)hPhysicalGpu;
+    if (pClkFreqs) {
+        NvU32 ver = pClkFreqs->version;
+        memset(pClkFreqs, 0, nvapi_struct_size(pClkFreqs, sizeof(*pClkFreqs)));
+        pClkFreqs->version = ver;
     }
     return NVAPI_OK;
 }

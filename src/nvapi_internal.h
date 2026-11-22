@@ -19,61 +19,12 @@
 #define ACUDA_NVAPI_CALL
 #endif
 
-typedef unsigned int NvU32;
-typedef int NvAPI_Status;
-typedef void *NvDisplayHandle;
-typedef void *NvPhysicalGpuHandle;
-typedef void *NvLogicalGpuHandle;
-typedef char NvAPI_ShortString[64];
+/* Use official NVIDIA NVAPI headers. */
+#include "nvapi.h"
 
-#define NVAPI_OK 0
-#define NVAPI_ERROR (-1)
-#define NVAPI_INVALID_ARGUMENT (-5)
-#define NVAPI_NVIDIA_DEVICE_NOT_FOUND (-6)
-#define NVAPI_END_ENUMERATION (-7)
-#define NVAPI_INCOMPATIBLE_STRUCT_VERSION (-9)
-#define NVAPI_NO_IMPLEMENTATION (-8)
-
+#ifndef FAKE_DISPLAY_HANDLE
 #define FAKE_DISPLAY_HANDLE ((NvDisplayHandle)(size_t)0x100)
-#define NVAPI_MAX_PHYSICAL_GPUS 64
-#define NVAPI_MAX_LOGICAL_GPUS 64
-
-typedef struct {
-    NvU32 version;
-    NvU32 drvVersion;
-    NvU32 bldChangeListNum;
-    NvAPI_ShortString szBuildBranchString;
-    NvAPI_ShortString szAdapterString;
-} NV_DISPLAY_DRIVER_VERSION;
-
-typedef struct {
-    NvPhysicalGpuHandle hPhysicalGpu;
-    NvU32 flags;
-} NV_COMPUTE_GPU;
-
-#define NVAPI_MAX_GPU_PER_TOPOLOGY 8
-
-typedef struct {
-    NvU32 version;
-    NvU32 gpuCount;
-    struct {
-        NvPhysicalGpuHandle hPhysicalGpu;
-        NvU32 flags;
-    } computeGpus[NVAPI_MAX_GPU_PER_TOPOLOGY];
-} NV_COMPUTE_GPU_TOPOLOGY_V1;
-
-typedef struct {
-    NvU32 version;
-    NvU32 gpuCount;
-    NV_COMPUTE_GPU *computeGpus;
-} NV_COMPUTE_GPU_TOPOLOGY_V2;
-
-#define NV_COMPUTE_GPU_TOPOLOGY_PHYSICS_CAPABLE (1u << 0)
-#define NV_COMPUTE_GPU_TOPOLOGY_PHYSICS_ENABLE (1u << 1)
-#define NV_COMPUTE_GPU_TOPOLOGY_PHYSICS_RECOMMENDED (1u << 3)
-#define NV_COMPUTE_GPU_TOPOLOGY_CUDA_AVAILABLE (1u << 4)
-#define NV_COMPUTE_GPU_TOPOLOGY_CUDA_CAPABLE (1u << 16)
-#define NV_COMPUTE_GPU_TOPOLOGY_PHYSICS_AVAILABLE (1u << 21)
+#endif
 
 typedef struct {
     int valid;

@@ -27,6 +27,7 @@ add_library(acuda_nvapi SHARED
 )
 target_include_directories(acuda_nvapi PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/src
+  ${CMAKE_CURRENT_SOURCE_DIR}/external/nvapi
   ${ACUDA_INCLUDE_DIR}
 )
 if(TARGET acuda_driver)
