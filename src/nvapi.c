@@ -1,4 +1,5 @@
-#include "nvapi_internal.h"
+﻿#include "nvapi_internal.h"
+#include <acuda/driver.h>
 
 static NvU32 compute_gpu_flags(void) {
     /* Match real NVAPI flags observed on a GeForce GPU (0xb). */
@@ -516,11 +517,22 @@ static NvAPI_Status NvAPI_GPU_GetCurrentPstate(NvPhysicalGpuHandle hPhysicalGpu,
     return NVAPI_OK;
 }
 static NvAPI_Status NvAPI_GPU_GetDynamicPstatesInfoEx(NvPhysicalGpuHandle hPhysicalGpu, NV_GPU_DYNAMIC_PSTATES_INFO_EX *pDynamicPstatesInfoEx) {
+    int util = 0;
     (void)hPhysicalGpu;
     if (pDynamicPstatesInfoEx) {
         NvU32 ver = pDynamicPstatesInfoEx->version;
-        memset(pDynamicPstatesInfoEx, 0, nvapi_struct_size(pDynamicPstatesInfoEx, sizeof(*pDynamicPstatesInfoEx)));
+        memset(pDynamicPstatesInfoEx, 0,
+               nvapi_struct_size(pDynamicPstatesInfoEx,
+                                 sizeof(*pDynamicPstatesInfoEx)));
         pDynamicPstatesInfoEx->version = ver;
+        pDynamicPstatesInfoEx->flags = 1;
+        /* Live utilisation from the driver (ADL2/hwinfo/NVML). */
+        if (cuDeviceGetAttribute(&util, 0x20080403, 0) == 0) {
+            pDynamicPstatesInfoEx->utilization[0].bIsPresent = 1; /* GPU */
+            pDynamicPstatesInfoEx->utilization[0].percentage = (NvU32)util;
+            pDynamicPstatesInfoEx->utilization[1].bIsPresent = 1; /* FB */
+            pDynamicPstatesInfoEx->utilization[1].percentage = (NvU32)util;
+        }
     }
     return NVAPI_OK;
 }
@@ -534,12 +546,31 @@ static NvAPI_Status NvAPI_GPU_GetPstates20(NvPhysicalGpuHandle hPhysicalGpu, NV_
     return NVAPI_OK;
 }
 static NvAPI_Status NvAPI_GPU_GetAllClockFrequencies(NvPhysicalGpuHandle hPhysicalGpu, NV_GPU_CLOCK_FREQUENCIES *pClkFreqs) {
+    int core = 0, mem = 0;
     (void)hPhysicalGpu;
-    if (pClkFreqs) {
+    if (!pClkFreqs)
+        return NVAPI_INVALID_ARGUMENT;
+    {
         NvU32 ver = pClkFreqs->version;
-        memset(pClkFreqs, 0, nvapi_struct_size(pClkFreqs, sizeof(*pClkFreqs)));
+        memset(pClkFreqs, 0,
+               nvapi_struct_size(pClkFreqs, sizeof(*pClkFreqs)));
         pClkFreqs->version = ver;
     }
+    /* Live values from the driver (ADL2 for AMD, hwinfo/NVML otherwise),
+     * refreshed on every query instead of the value sampled at init. */
+    if (cuDeviceGetAttribute(&core, 13 /* CLOCK_RATE */, 0) == 0 &&
+        core > 0) {
+        pClkFreqs->domain[NVAPI_GPU_PUBLIC_CLOCK_GRAPHICS].bIsPresent = 1;
+        pClkFreqs->domain[NVAPI_GPU_PUBLIC_CLOCK_GRAPHICS].frequency =
+            (NvU32)core;
+    }
+    if (cuDeviceGetAttribute(&mem, 36 /* MEMORY_CLOCK_RATE */, 0) == 0 &&
+        mem > 0) {
+        pClkFreqs->domain[NVAPI_GPU_PUBLIC_CLOCK_MEMORY].bIsPresent = 1;
+        pClkFreqs->domain[NVAPI_GPU_PUBLIC_CLOCK_MEMORY].frequency =
+            (NvU32)mem;
+    }
+    acuda_nvapi_log_msg("clock freqs core=%d mem=%d", core, mem);
     return NVAPI_OK;
 }
 
