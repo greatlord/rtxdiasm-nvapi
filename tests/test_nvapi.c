@@ -26,6 +26,7 @@ typedef char NvAPI_ShortString[64];
 
 #define NVAPI_OK 0
 #define NVAPI_END_ENUMERATION (-7)
+#define NVAPI_INCOMPATIBLE_STRUCT_VERSION (-9)
 
 typedef struct { NvPhysicalGpuHandle hPhysicalGpu; NvU32 flags; } NV_COMPUTE_GPU;
 typedef struct {
@@ -147,20 +148,70 @@ int main(int argc, char **argv) {
     }
 
     {
+        /* NvAPI_GPU_CudaEnumComputeCapableGpus (PhysX 2.8.4 path):
+         * V1 is supported; V2 is rejected like the real driver so callers
+         * use V1 (accepting V2 crashed PhysXDevice). */
         NV_COMPUTE_GPU_TOPOLOGY_V2 topo;
-        NV_COMPUTE_GPU gtmp[16];
         NvAPI_Status (*topo_fn)(void *) =
             (NvAPI_Status (*)(void *))query(0x5786cc6eu);
         CHECK(topo_fn != NULL, "CudaEnumComputeCapableGpus resolved");
         if (topo_fn) {
             memset(&topo, 0, sizeof(topo));
+            topo.version = mkver(sizeof(topo), 2);
+            topo.gpuCount = 8;
+            st = topo_fn(&topo);
+            CHECK(st == NVAPI_INCOMPATIBLE_STRUCT_VERSION,
+                  "CudaEnumComputeCapableGpus v2 rejected");
+        }
+    }
+
+    {
+        /* Legacy NvAPI_GPU_GetComputeCapableGpus: honours V2 with a caller
+         * array, answers count-only when no usable array is supplied. */
+        NV_COMPUTE_GPU_TOPOLOGY_V2 topo;
+        NV_COMPUTE_GPU gtmp[8];
+        NvAPI_Status (*get_fn)(void *, NvU32, NvU32, NvU32) =
+            (NvAPI_Status (*)(void *, NvU32, NvU32, NvU32))query(0x36e39e6bu);
+        CHECK(get_fn != NULL, "GetComputeCapableGpus resolved");
+        if (get_fn) {
+            memset(&topo, 0, sizeof(topo));
             memset(gtmp, 0, sizeof(gtmp));
             topo.version = mkver(sizeof(topo), 2);
+            topo.gpuCount = 8;
             topo.computeGpus = gtmp;
-            st = topo_fn(&topo);
-            CHECK(st == NVAPI_OK, "CudaEnumComputeCapableGpus v2");
-            CHECK(topo.gpuCount >= 1, "compute topology has GPUs");
-            fprintf(stderr, "info: compute topology count=%u\n", topo.gpuCount);
+            st = get_fn(&topo, 0, 0, 0);
+            CHECK(st == NVAPI_OK && topo.gpuCount >= 1 &&
+                      gtmp[0].hPhysicalGpu != NULL,
+                  "GetComputeCapableGpus v2 with array");
+            fprintf(stderr,
+                    "info: compute topology v2 count=%u h0=%p flags=0x%x\n",
+                    topo.gpuCount, (void *)gtmp[0].hPhysicalGpu,
+                    gtmp[0].flags);
+            memset(&topo, 0, sizeof(topo));
+            topo.version = mkver(sizeof(topo), 2);
+            st = get_fn(&topo, 0, 0, 0);
+            CHECK(st == NVAPI_OK && topo.gpuCount >= 1,
+                  "GetComputeCapableGpus v2 without array is count-only");
+        }
+    }
+
+    {
+        struct {
+            NvU32 version;
+            NvU32 gpuCount;
+            NV_COMPUTE_GPU g[8];
+        } v1;
+        NvAPI_Status (*topo_fn)(void *) =
+            (NvAPI_Status (*)(void *))query(0x5786cc6eu);
+        if (topo_fn) {
+            memset(&v1, 0, sizeof(v1));
+            v1.version = mkver(sizeof(v1), 1);
+            st = topo_fn(&v1);
+            CHECK(st == NVAPI_OK, "CudaEnumComputeCapableGpus v1");
+            CHECK(v1.gpuCount >= 1, "compute topology v1 has GPUs");
+            fprintf(stderr,
+                    "info: compute topology v1 count=%u h0=%p flags=0x%x\n",
+                    v1.gpuCount, (void *)v1.g[0].hPhysicalGpu, v1.g[0].flags);
         }
     }
 

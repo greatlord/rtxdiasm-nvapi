@@ -58,21 +58,61 @@ static NvAPI_Status NvAPI_GPU_CudaEnumComputeCapableGpus_v1(NV_COMPUTE_GPU_TOPOL
     return NVAPI_OK;
 }
 
+#if defined(_WIN32)
+/* True when [p, p+bytes) is a committed, writable region of this process.
+ * V2 callers pass an array pointer (or leave it uninitialised, as PhysX
+ * 2.8.4 does); never write through a pointer we cannot validate. */
+static int nvapi_output_buffer_writable(const void *p, size_t bytes) {
+    MEMORY_BASIC_INFORMATION mbi;
+    const unsigned char *start = (const unsigned char *)p;
+    if (!p || bytes == 0)
+        return 0;
+    if (VirtualQuery(p, &mbi, sizeof(mbi)) == 0)
+        return 0;
+    if (mbi.State != MEM_COMMIT)
+        return 0;
+    if (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD | PAGE_READONLY |
+                       PAGE_EXECUTE | PAGE_EXECUTE_READ))
+        return 0;
+    if (start + bytes >
+        (const unsigned char *)mbi.BaseAddress + mbi.RegionSize)
+        return 0;
+    return 1;
+}
+#else
+static int nvapi_output_buffer_writable(const void *p, size_t bytes) {
+    (void)p;
+    (void)bytes;
+    return 0;
+}
+#endif
+
 static NvAPI_Status NvAPI_GPU_CudaEnumComputeCapableGpus_v2(NV_COMPUTE_GPU_TOPOLOGY_V2 *topo) {
-    NvU32 i, n;
-    NV_COMPUTE_GPU *out;
+    NvU32 i, n, cap;
     acuda_nvapi_ensure_discovered();
-    out = topo->computeGpus ? topo->computeGpus : g_compute_gpus;
     n = g_gpu_count;
-    topo->gpuCount = n;
-    for (i = 0; i < n; i++) {
-        out[i].hPhysicalGpu = acuda_nvapi_gpu_handle(&g_gpus[i]);
-        out[i].flags = compute_gpu_flags();
-        acuda_nvapi_log_msg("topo v2 gpu[%u] handle=%p flags=0x%x", i,
-                            (void *)out[i].hPhysicalGpu, out[i].flags);
+    cap = topo->gpuCount;
+    if (cap == 0 || cap > NVAPI_MAX_GPU_PER_TOPOLOGY ||
+        !nvapi_output_buffer_writable(topo->computeGpus,
+                                      (size_t)cap * sizeof(NV_COMPUTE_GPU))) {
+        /* The caller passed a V2 header but no usable output array (PhysX
+         * 2.8.4 leaves computeGpus uninitialised).  Report the count and
+         * never write through an unvalidated pointer. */
+        topo->gpuCount = n;
+        acuda_nvapi_log_msg("topo v2 count-only count=%u ptr=%p", topo->gpuCount,
+                            (void *)topo->computeGpus);
+        return NVAPI_OK;
     }
-    if (!topo->computeGpus)
-        topo->computeGpus = g_compute_gpus;
+    if (cap < n)
+        n = cap;
+    for (i = 0; i < n; i++) {
+        topo->computeGpus[i].hPhysicalGpu = acuda_nvapi_gpu_handle(&g_gpus[i]);
+        topo->computeGpus[i].flags = compute_gpu_flags();
+        acuda_nvapi_log_msg("topo v2 gpu[%u] handle=%p flags=0x%x", i,
+                            (void *)topo->computeGpus[i].hPhysicalGpu,
+                            topo->computeGpus[i].flags);
+    }
+    topo->gpuCount = n;
     acuda_nvapi_log_msg("topo v2 count=%u", topo->gpuCount);
     return NVAPI_OK;
 }
@@ -84,8 +124,11 @@ static NvAPI_Status NvAPI_GPU_CudaEnumComputeCapableGpus(NV_COMPUTE_GPU_TOPOLOGY
     if (!pComputeTopo) return NVAPI_INVALID_ARGUMENT;
     if (pComputeTopo->version == NV_COMPUTE_GPU_TOPOLOGY_VER1)
         return NvAPI_GPU_CudaEnumComputeCapableGpus_v1((NV_COMPUTE_GPU_TOPOLOGY_V1 *)pComputeTopo);
-    if (pComputeTopo->version == NV_COMPUTE_GPU_TOPOLOGY_VER)
-        return NvAPI_GPU_CudaEnumComputeCapableGpus_v2((NV_COMPUTE_GPU_TOPOLOGY_V2 *)pComputeTopo);
+    /* Real NVAPI rejects the V2 (pointer array) form with
+     * NVAPI_INCOMPATIBLE_STRUCT_VERSION; PhysX 2.8.4 then falls back to V1.
+     * Accepting V2 here made PhysX pass a struct with an uninitialised
+     * computeGpus pointer, and writing the handles through it crashed. */
+    acuda_nvapi_log_msg("topo v2 rejected (version 0x%x)", pComputeTopo->version);
     return NVAPI_INCOMPATIBLE_STRUCT_VERSION;
 }
 
